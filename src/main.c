@@ -62,7 +62,7 @@ void read_workload(const char *filename) {
     fclose(file);
 }
 
-// Simulasyon Dongusu (Hem FCFS hem SJF destekler)
+// Simulasyon Dongusu (FCFS, SJF, SRTF)
 void run_simulation(int print_csv, const char *algo) {
     int tick = 0;
     int completed = 0;
@@ -109,6 +109,33 @@ void run_simulation(int print_csv, const char *algo) {
             }
         }
 
+        // 2.5 SRTF Icin Kesme (Preemption) Kontrolu
+        if (current_running != -1 && strcmp(algo, "SRTF") == 0) {
+            int better_process = -1;
+            int shortest_burst = processes[current_running].remaining_time;
+
+            for (int i = 0; i < process_count; i++) {
+                if (processes[i].state == 1) { // Sadece READY olanlara bak
+                    if (processes[i].remaining_time < shortest_burst) {
+                        shortest_burst = processes[i].remaining_time;
+                        better_process = i;
+                    }
+                }
+            }
+            
+            // Eger daha kisa bir is varsa mevcut olani kov
+            if (better_process != -1) {
+                processes[current_running].state = 1; // Tekrar READY yap
+                processes[current_running].ready_queue_enter_time = tick;
+                
+                if (!print_csv && last_gantt_tick != tick) {
+                    printf("%s %d-%d | ", processes[current_running].pid, last_gantt_tick, tick);
+                }
+                last_gantt_tick = tick;
+                current_running = -1; // CPU'yu yeni ise hazirla
+            }
+        }
+
         // 3. Algoritmaya Gore CPU'ya Secim Yap
         if (current_running == -1) {
             int selected = -1;
@@ -124,18 +151,16 @@ void run_simulation(int print_csv, const char *algo) {
                     }
                 }
             } 
-            else if (strcmp(algo, "SJF") == 0) {
+            else if (strcmp(algo, "SJF") == 0 || strcmp(algo, "SRTF") == 0) {
                 int shortest_burst = 999999;
                 int oldest_time = 999999;
                 for (int i = 0; i < process_count; i++) {
                     if (processes[i].state == 1) {
-                        // En kisa burst suresine sahip olani bul
                         if (processes[i].remaining_time < shortest_burst) {
                             shortest_burst = processes[i].remaining_time;
                             oldest_time = processes[i].ready_queue_enter_time;
                             selected = i;
                         } 
-                        // Burst sureleri esitse ilk geleni sec (FCFS kurali)
                         else if (processes[i].remaining_time == shortest_burst) {
                             if (processes[i].ready_queue_enter_time < oldest_time) {
                                 oldest_time = processes[i].ready_queue_enter_time;
@@ -188,15 +213,14 @@ void run_simulation(int print_csv, const char *algo) {
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "Kullanim: ./minios [--csv] [--algo FCFS|SJF] <dosya_adi>\n");
+        fprintf(stderr, "Kullanim: ./minios [--csv] [--algo FCFS|SJF|SRTF] <dosya_adi>\n");
         return 1;
     }
 
     int print_csv = 0;
-    char algo[10] = "FCFS"; // Parametre girilmezse varsayilan FCFS
+    char algo[10] = "FCFS"; 
     const char *filename = argv[argc - 1];
 
-    // Argumanlari ayikla
     for (int i = 1; i < argc - 1; i++) {
         if (strcmp(argv[i], "--csv") == 0) {
             print_csv = 1;
