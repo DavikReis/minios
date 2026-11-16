@@ -5,7 +5,6 @@
 #define MAX_BURSTS 100
 #define MAX_PROCESSES 100
 
-// Process Control Block (PCB)
 typedef struct {
     char pid[16];
     int arrival_time;
@@ -63,31 +62,33 @@ void read_workload(const char *filename) {
     fclose(file);
 }
 
-// FCFS Simulasyon Dongusu ve Metrik Hesaplamalari[cite: 2]
-void run_fcfs(int print_csv) {
+// Simulasyon Dongusu (Hem FCFS hem SJF destekler)
+void run_simulation(int print_csv, const char *algo) {
     int tick = 0;
     int completed = 0;
     int current_running = -1;
     int last_gantt_tick = 0;
 
-    if (!print_csv) printf("Gantt Chart: | ");
+    if (!print_csv) printf("Gantt Chart (%s): | ", algo);
 
     while (completed < process_count) {
+        // 1. Yeni gelenleri ve I/O bitirenleri READY yap
         for (int i = 0; i < process_count; i++) {
             if (processes[i].state == 0 && processes[i].arrival_time == tick) {
-                processes[i].state = 1; // READY
+                processes[i].state = 1; 
                 processes[i].ready_queue_enter_time = tick;
-            } else if (processes[i].state == 3) { // WAITING (I/O)
+            } else if (processes[i].state == 3) { 
                 processes[i].remaining_time--;
                 if (processes[i].remaining_time == 0) {
                     processes[i].current_burst_index++;
                     processes[i].remaining_time = processes[i].bursts[processes[i].current_burst_index];
-                    processes[i].state = 1; // READY
+                    processes[i].state = 1; 
                     processes[i].ready_queue_enter_time = tick;
                 }
             }
         }
 
+        // 2. RUNNING durumundaki prosesi islet
         if (current_running != -1) {
             processes[current_running].remaining_time--;
             if (processes[current_running].remaining_time == 0) {
@@ -108,17 +109,43 @@ void run_fcfs(int print_csv) {
             }
         }
 
+        // 3. Algoritmaya Gore CPU'ya Secim Yap
         if (current_running == -1) {
             int selected = -1;
-            int oldest_time = 999999;
-            for (int i = 0; i < process_count; i++) {
-                if (processes[i].state == 1) { 
-                    if (processes[i].ready_queue_enter_time < oldest_time) {
-                        oldest_time = processes[i].ready_queue_enter_time;
-                        selected = i;
+            
+            if (strcmp(algo, "FCFS") == 0) {
+                int oldest_time = 999999;
+                for (int i = 0; i < process_count; i++) {
+                    if (processes[i].state == 1) { 
+                        if (processes[i].ready_queue_enter_time < oldest_time) {
+                            oldest_time = processes[i].ready_queue_enter_time;
+                            selected = i;
+                        }
+                    }
+                }
+            } 
+            else if (strcmp(algo, "SJF") == 0) {
+                int shortest_burst = 999999;
+                int oldest_time = 999999;
+                for (int i = 0; i < process_count; i++) {
+                    if (processes[i].state == 1) {
+                        // En kisa burst suresine sahip olani bul
+                        if (processes[i].remaining_time < shortest_burst) {
+                            shortest_burst = processes[i].remaining_time;
+                            oldest_time = processes[i].ready_queue_enter_time;
+                            selected = i;
+                        } 
+                        // Burst sureleri esitse ilk geleni sec (FCFS kurali)
+                        else if (processes[i].remaining_time == shortest_burst) {
+                            if (processes[i].ready_queue_enter_time < oldest_time) {
+                                oldest_time = processes[i].ready_queue_enter_time;
+                                selected = i;
+                            }
+                        }
                     }
                 }
             }
+
             if (selected != -1) {
                 if (!print_csv && last_gantt_tick != tick) {
                     printf("IDLE %d-%d | ", last_gantt_tick, tick);
@@ -143,7 +170,6 @@ void run_fcfs(int print_csv) {
     
     if (!print_csv) printf("\n");
 
-    // CSV Ciktisi[cite: 2]
     if (print_csv) {
         printf("pid, arrival, completion, turnaround, waiting, response\n");
         for (int i = 0; i < process_count; i++) {
@@ -162,20 +188,25 @@ void run_fcfs(int print_csv) {
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "Kullanim: ./minios [--csv] <dosya_adi>\n");
+        fprintf(stderr, "Kullanim: ./minios [--csv] [--algo FCFS|SJF] <dosya_adi>\n");
         return 1;
     }
 
     int print_csv = 0;
+    char algo[10] = "FCFS"; // Parametre girilmezse varsayilan FCFS
     const char *filename = argv[argc - 1];
 
+    // Argumanlari ayikla
     for (int i = 1; i < argc - 1; i++) {
         if (strcmp(argv[i], "--csv") == 0) {
             print_csv = 1;
+        } else if (strcmp(argv[i], "--algo") == 0 && i + 1 < argc - 1) {
+            strcpy(algo, argv[i + 1]);
+            i++; 
         }
     }
 
     read_workload(filename);
-    run_fcfs(print_csv);
+    run_simulation(print_csv, algo);
     return 0;
 }
